@@ -13,7 +13,7 @@ COPY --from=bun-builder /app/messaging /app/messaging
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY fastapi/ /app/fastapi
+COPY main_api/ /app/main_api
 COPY supervisord.conf .
 
 CMD ["supervisord", "-c", "supervisord.conf"] 

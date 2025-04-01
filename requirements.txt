@@ -3,3 +3,5 @@ uvicorn
 httpx
 supervisor
 jinja2 
+openai
+python-dotenv

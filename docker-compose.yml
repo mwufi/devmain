@@ -9,8 +9,8 @@ services:
       - .:/app
     develop:
       watch:
-        - path: ./fastapi
-          target: /app/fastapi
+        - path: ./main_api
+          target: /app/main_api
           action: sync
         - path: ./messaging
           target: /app/messaging

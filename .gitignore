@@ -8,3 +8,5 @@
 
 supervisord.log
 supervisord.pid
+
+**/*.log
