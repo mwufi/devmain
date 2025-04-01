@@ -6,5 +6,12 @@ services:
       - "8000:8000"
       - "3000:3000"
     volumes:
-      - ./fastapi:/app/fastapi
-      - ./messaging:/app/messaging 
+      - .:/app
+    develop:
+      watch:
+        - path: ./fastapi
+          target: /app/fastapi
+          action: sync
+        - path: ./messaging
+          target: /app/messaging
+          action: sync
