@@ -6,6 +6,7 @@ import httpx
 import subprocess
 import os
 from ai import get_ai_response
+from db import get_whales
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
@@ -24,6 +25,11 @@ async def execute_command(command: dict):
     except Exception as e:
         return {"error": str(e)}
 
+@app.get("/whales")
+async def whales_endpoint():
+    whales = get_whales()
+    print(whales)
+    return {"whales": whales}
 
 @app.get("/ping-ts")
 async def ping_ts():
