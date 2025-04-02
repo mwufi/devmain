@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { getRandomNumber, getRandomString } from "./foo.ts"
 import { init, id } from "@instantdb/admin"
 import { z } from "zod"
+import schema from './instant.schema.ts';
 
 import { config } from "dotenv"
 config()
@@ -20,6 +21,7 @@ if (!INSTANT_APP_ADMIN_TOKEN) {
 const db = init({
     appId: INSTANT_APP_ID,
     adminToken: INSTANT_APP_ADMIN_TOKEN,
+    schema
 })
 
 // Create Hono app with error handling
@@ -41,6 +43,11 @@ const createBunnySchema = z.object({
     name: z.string().min(1).max(100)
 })
 
+const createMessageSchema = z.object({
+    role: z.string(),
+    content: z.string()
+})
+
 // Helper functions
 async function fetchBunnies() {
     const data = await db.query({ bunnies: {} })
@@ -52,6 +59,17 @@ async function createBunny(name: string) {
     const res = await db.transact([
         db.tx.bunnies[id()].update({
             name,
+            createdAt: Date.now()
+        })
+    ])
+    return res['tx-id']
+}
+
+async function createMessage(role: string, content: string) {
+    const res = await db.transact([
+        db.tx.messages[id()].update({
+            role,
+            content,
             createdAt: Date.now()
         })
     ])
@@ -92,6 +110,25 @@ app.post('/bunnies', async (c) => {
         }
         console.error('Error creating bunny:', error)
         return c.json({ error: "Failed to create bunny" }, 500)
+    }
+})
+
+app.post('/messages', async (c) => {
+    try {
+        const body = await c.req.json()
+        const validatedData = createMessageSchema.parse(body)
+
+        const messageId = await createMessage(validatedData.role, validatedData.content)
+        return c.json({
+            message: "Message created successfully",
+            id: messageId
+        }, 201)
+    } catch (error: unknown) {
+        if (error instanceof z.ZodError) {
+            return c.json({ error: "Invalid input", details: error.errors }, 400)
+        }
+        console.error('Error creating message:', error)
+        return c.json({ error: "Failed to create message" }, 500)
     }
 })
 

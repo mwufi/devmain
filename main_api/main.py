@@ -20,7 +20,23 @@ async def home(request: Request):
 @app.post("/execute")
 async def execute_command(command: dict):
     try:
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                "http://localhost:3000/messages",
+                json={"role": "user", "content": command["command"]}
+            )
+
+        # Get AI response
         ai_response = get_ai_response(command["command"])
+        
+        # Post user message to localhost:3000/messages
+        async with httpx.AsyncClient() as client:
+            # Post AI response to localhost:3000/messages
+            await client.post(
+                "http://localhost:3000/messages",
+                json={"role": "assistant", "content": ai_response}
+            )
+        
         return {"output": ai_response}
     except Exception as e:
         return {"error": str(e)}
