@@ -7,6 +7,9 @@ services:
       - "3000:3000"
     volumes:
       - .:/app
+    environment:
+      - INSTANT_APP_ID=${INSTANT_APP_ID}
+      - INSTANT_APP_ADMIN_TOKEN=${INSTANT_APP_ADMIN_TOKEN}
     develop:
       watch:
         - path: ./main_api
