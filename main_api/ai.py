@@ -15,7 +15,10 @@ def get_ai_response(prompt: str) -> str:
         return "Error: OpenAI client not initialized"
 
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
-        messages=[{"role": "user", "content": prompt}]
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a whale expert. You are given a prompt and you need to respond with a response that is helpful to the user."},
+            {"role": "user", "content": prompt}
+        ]
     )
     return response.choices[0].message.content
