@@ -69,6 +69,23 @@ async def ping_ts():
         r = await client.get("http://localhost:3000/ping")
         return {"response_from_ts": r.json()}
 
+async def get_thread_messages(thread_id: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"http://localhost:3000/threads/{thread_id}")
+        return response.json()
+
+async def post_to_instantdb(thread_id: str, message: str):
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"http://localhost:3000/threads/{thread_id}",
+            json={"role": "assistant", "content": message}
+        )
+        if response.status_code != 201:
+            return {"error": f"Failed to add AI response to thread: {response.text}"}
+        
+        result = response.json()
+        return result
+
 @app.post("/threads/{thread_id}")
 async def process_thread_message(
     thread_id: str = Path(..., description="The ID of the thread"),
@@ -79,27 +96,18 @@ async def process_thread_message(
         print(f"User message: {user_message}")
 
         # 1. Fetch the latest messages from the thread
-        async with httpx.AsyncClient() as client:
-            response = await client.get(f"http://localhost:3000/threads/{thread_id}")
-            if response.status_code != 200:
-                return {"error": f"Failed to fetch thread messages: {response.text}"}
-            
-            thread_messages = response.json()
-        
+        thread_messages = await get_thread_messages(thread_id)
+        print("thread_messages", [x.get("content") for x in thread_messages])
+
+        # 3. Add AI response to the thread
+        await post_to_instantdb(thread_id, "my name is Bob...")
+
         # 2. Process messages and generate AI response
         ai_response = get_chat_ai_response(thread_messages)
         print(f"AI response: {ai_response}")
 
         # 3. Add AI response to the thread
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"http://localhost:3000/threads/{thread_id}",
-                json={"role": "assistant", "content": ai_response}
-            )
-            if response.status_code != 201:
-                return {"error": f"Failed to add AI response to thread: {response.text}"}
-            
-            result = response.json()
+        result = await post_to_instantdb(thread_id, ai_response)
         
         return {
             "message": "AI response added to thread successfully",
