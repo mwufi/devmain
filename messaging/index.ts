@@ -76,6 +76,42 @@ async function createMessage(role: string, content: string) {
     return res['tx-id']
 }
 
+async function fetchThreadMessages(threadId: string) {
+    const data = await db.query({
+        conversations: {
+            $: {
+                where: {
+                    id: threadId
+                }
+            },
+            messages: {}
+        }
+    })
+    
+    return data?.conversations[0]?.messages || []
+}
+
+async function addMessageToThread(role: string, content: string, threadId: string) {
+    const messages = await fetchThreadMessages(threadId)
+    const newMessageId = id()
+    
+    await db.transact([
+        db.tx.conversations[threadId].merge({
+            data: {
+                lastMessage: { role, content, createdAt: new Date().toISOString() },
+                numMessages: messages.length + 1
+            }
+        }),
+        db.tx.messages[newMessageId].update({
+            role,
+            content,
+            createdAt: Date.now()
+        }).link({ conversations: threadId })
+    ])
+    
+    return newMessageId
+}
+
 // Routes
 app.get('/ping', (c) => {
     return c.json({
@@ -129,6 +165,39 @@ app.post('/messages', async (c) => {
         }
         console.error('Error creating message:', error)
         return c.json({ error: "Failed to create message" }, 500)
+    }
+})
+
+// Get thread messages
+app.get('/threads/:id', async (c) => {
+    try {
+        const threadId = c.req.param('id')
+        const messages = await fetchThreadMessages(threadId)
+        return c.json(messages)
+    } catch (error) {
+        console.error('Error fetching thread messages:', error)
+        return c.json({ error: "Failed to fetch thread messages" }, 500)
+    }
+})
+
+// Add message to thread
+app.post('/threads/:id', async (c) => {
+    try {
+        const threadId = c.req.param('id')
+        const body = await c.req.json()
+        const validatedData = createMessageSchema.parse(body)
+
+        const messageId = await addMessageToThread(validatedData.role, validatedData.content, threadId)
+        return c.json({
+            message: "Message added to thread successfully",
+            id: messageId
+        }, 201)
+    } catch (error: unknown) {
+        if (error instanceof z.ZodError) {
+            return c.json({ error: "Invalid input", details: error.errors }, 400)
+        }
+        console.error('Error adding message to thread:', error)
+        return c.json({ error: "Failed to add message to thread" }, 500)
     }
 })
 

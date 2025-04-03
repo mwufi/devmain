@@ -1,6 +1,7 @@
 from openai import OpenAI   
 from dotenv import load_dotenv
 import os
+from typing import List, Dict, Any
 
 load_dotenv()
 
@@ -22,3 +23,39 @@ def get_ai_response(prompt: str) -> str:
         ]
     )
     return response.choices[0].message.content
+
+def get_chat_ai_response(messages: List[Dict[str, Any]]) -> str:
+    """
+    Process a list of chat messages and generate an AI response.
+    
+    Args:
+        messages: A list of message objects with 'role', 'content', and other fields
+        
+    Returns:
+        A string containing the AI's response
+    """
+    if client is None:
+        return "Error: OpenAI client not initialized"
+    
+    # Format messages for OpenAI API
+    formatted_messages = [
+        {"role": "developer", "content": "You are a helpful and enthusiastic chat assistant. Respond in a friendly and concise manner. Keep your messages relatively short and engaging."}
+    ]
+    
+    # Add conversation history (limit to last 10 messages to keep context manageable)
+    for msg in messages[-10:]:
+        if "role" in msg and "content" in msg:
+            formatted_messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=formatted_messages
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Error getting AI response: {e}")
+        return f"Sorry, I'm having trouble responding right now. Error: {str(e)}"
