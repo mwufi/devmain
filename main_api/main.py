@@ -69,10 +69,18 @@ async def ping_ts():
         r = await client.get("http://localhost:3000/ping")
         return {"response_from_ts": r.json()}
 
-async def get_thread_messages(thread_id: str):
+async def get_thread_info(thread_id: str):
     async with httpx.AsyncClient() as client:
         response = await client.get(f"http://localhost:3000/threads/{thread_id}")
-        return response.json()
+        result = response.json()
+
+        botInfo = None
+        if 'data' in result:
+            botInfo = result['data'].get('botInfo')
+
+        messages = result.get("messages")
+
+        return messages, botInfo
 
 async def post_to_instantdb(thread_id: str, message: str):
     async with httpx.AsyncClient() as client:
@@ -96,14 +104,10 @@ async def process_thread_message(
         print(f"User message: {user_message}")
 
         # 1. Fetch the latest messages from the thread
-        thread_messages = await get_thread_messages(thread_id)
-        print("thread_messages", [x.get("content") for x in thread_messages])
-
-        # 3. Add AI response to the thread
-        await post_to_instantdb(thread_id, "my name is Bob...")
+        thread_messages, bot_info = await get_thread_info(thread_id)
 
         # 2. Process messages and generate AI response
-        ai_response = get_chat_ai_response(thread_messages)
+        ai_response = get_chat_ai_response(thread_messages, bot_info)
         print(f"AI response: {ai_response}")
 
         # 3. Add AI response to the thread

@@ -87,14 +87,14 @@ async function fetchThreadMessages(threadId: string) {
             messages: {}
         }
     })
-    
-    return data?.conversations[0]?.messages || []
+
+    return data?.conversations[0]
 }
 
 async function addMessageToThread(role: string, content: string, threadId: string) {
     const messages = await fetchThreadMessages(threadId)
     const newMessageId = id()
-    
+
     await db.transact([
         db.tx.conversations[threadId].merge({
             data: {
@@ -108,7 +108,7 @@ async function addMessageToThread(role: string, content: string, threadId: strin
             createdAt: Date.now()
         }).link({ conversations: threadId })
     ])
-    
+
     return newMessageId
 }
 

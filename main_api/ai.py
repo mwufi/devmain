@@ -24,7 +24,7 @@ def get_ai_response(prompt: str) -> str:
     )
     return response.choices[0].message.content
 
-def get_chat_ai_response(messages: List[Dict[str, Any]]) -> str:
+def get_chat_ai_response(messages: List[Dict[str, Any]], bot_info: Dict[str, Any]) -> str:
     """
     Process a list of chat messages and generate an AI response.
     
@@ -37,10 +37,17 @@ def get_chat_ai_response(messages: List[Dict[str, Any]]) -> str:
     if client is None:
         return "Error: OpenAI client not initialized"
     
-    # Format messages for OpenAI API
-    formatted_messages = [
-        {"role": "developer", "content": "You are a helpful and enthusiastic chat assistant. Respond in a friendly and concise manner. Keep your messages relatively short and engaging."}
-    ]
+    print("bot_info", bot_info)
+    
+    if 'systemPrompt' in bot_info:
+        # Format messages for OpenAI API
+        formatted_messages = [
+            {"role": "developer", "content": bot_info['systemPrompt']}
+        ]
+    else:
+        formatted_messages = [
+            {"role": "developer", "content": "You are a helpful and enthusiastic chat assistant named " + bot_info['name'] + ". Respond in a friendly and concise manner. Keep your messages relatively short and engaging."}
+        ]
     
     # Add conversation history (limit to last 10 messages to keep context manageable)
     for msg in messages[-10:]:
