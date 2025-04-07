@@ -10,6 +10,7 @@ from ai import get_ai_response, get_chat_ai_response
 from db import get_whales
 from typing import List, Dict, Any
 from pydantic import BaseModel
+from loguru import logger
 
 class UserMessage(BaseModel):
     message: str = None
@@ -27,7 +28,7 @@ app.add_middleware(
 
 templates = Jinja2Templates(directory="templates")
 
-print("App starting up!", flush=True)
+logger.info("App starting up!")
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -104,15 +105,14 @@ async def process_thread_message(
     user_message: UserMessage = Body(default=None)
 ):
     try:
-        print(f"Processing thread message for thread ID: {thread_id}")
-        print(f"User message: {user_message}")
+        logger.info(f"[Thread ID: {thread_id}] User: {user_message}")
 
         # 1. Fetch the latest messages from the thread
         thread_messages, bot_info = await get_thread_info(thread_id)
 
         # 2. Process messages and generate AI response
         ai_response = get_chat_ai_response(thread_messages, bot_info)
-        print(f"AI response: {ai_response}")
+        logger.info(f"[Thread ID: {thread_id}] AI: {ai_response}")
 
         # 3. Add AI response to the thread
         result = await post_to_instantdb(thread_id, ai_response)
