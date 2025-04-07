@@ -6,7 +6,10 @@ from typing import List, Dict, Any
 load_dotenv()
 
 try:
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("OPENROUTER_API_KEY")
+    )
 except Exception as e:
     print(f"Error initializing OpenAI client: {e}")
     client = None
@@ -59,7 +62,11 @@ def get_chat_ai_response(messages: List[Dict[str, Any]], bot_info: Dict[str, Any
     
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            extra_headers={
+                "HTTP-Referer": "https://ara.computer", # Optional. Site URL for rankings on openrouter.ai.
+                "X-Title": "Ara AI Chat", # Optional. Site title for rankings on openrouter.ai.
+            },
+            model="meta-llama/llama-4-maverick:free",
             messages=formatted_messages
         )
         return response.choices[0].message.content
