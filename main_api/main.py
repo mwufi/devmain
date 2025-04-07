@@ -69,6 +69,10 @@ async def ping_ts():
         r = await client.get("http://localhost:3000/ping")
         return {"response_from_ts": r.json()}
 
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "main_api"}
+
 async def get_thread_info(thread_id: str):
     async with httpx.AsyncClient() as client:
         response = await client.get(f"http://localhost:3000/threads/{thread_id}")
