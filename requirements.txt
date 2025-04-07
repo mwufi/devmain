@@ -7,3 +7,4 @@ openai
 python-dotenv
 supabase
 scrapybara
+loguru
