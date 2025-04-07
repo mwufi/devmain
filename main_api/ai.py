@@ -42,6 +42,10 @@ def get_chat_ai_response(messages: List[Dict[str, Any]], bot_info: Dict[str, Any
     
     print("bot_info", bot_info)
     
+    model = "microsoft/wizardlm-2-8x22b"
+    if 'model' in bot_info:
+        model = bot_info['model']
+
     if 'systemPrompt' in bot_info:
         # Format messages for OpenAI API
         formatted_messages = [
@@ -66,7 +70,7 @@ def get_chat_ai_response(messages: List[Dict[str, Any]], bot_info: Dict[str, Any
                 "HTTP-Referer": "https://ara.computer", # Optional. Site URL for rankings on openrouter.ai.
                 "X-Title": "Ara AI Chat", # Optional. Site title for rankings on openrouter.ai.
             },
-            model="meta-llama/llama-4-maverick:free",
+            model=model,
             messages=formatted_messages
         )
         return response.choices[0].message.content
