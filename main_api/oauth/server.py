@@ -9,10 +9,11 @@ from sqlalchemy.orm import sessionmaker
 from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
+from loguru import logger
 import uuid
 
 router = APIRouter(prefix="/oauth2")
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory="oauth/templates")
 
 # Security setup
 SECRET_KEY = "another_secret_key"
@@ -85,6 +86,12 @@ def register_user(username: str, password: str):
     session.commit()
     session.close()
     return {"message": "User registered"}
+
+@router.get("/test_authorize")
+def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: str, state: str, response_type: str = "code"):
+    session = Session()
+    client = session.query(ClientDB).filter_by(client_id=client_id).first()
+    return {"client": client}
 
 @router.get("/authorize")
 def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: str, state: str, response_type: str = "code"):
