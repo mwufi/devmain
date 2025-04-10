@@ -62,7 +62,7 @@ def generate_client_secret():
     return str(uuid.uuid4())
 
 def create_access_token(user_id: int, client_id: str, expires_delta: timedelta):
-    to_encode = {"sub": user_id, "client_id": client_id, "exp": datetime.utcnow() + expires_delta}
+    to_encode = {"sub": str(user_id), "client_id": client_id, "exp": datetime.utcnow() + expires_delta}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # Routes
@@ -154,23 +154,24 @@ class TokenRequest(BaseModel):
     client_secret: str
 
 @router.post("/token")
-def token(request: TokenRequest):
-    if request.grant_type != "authorization_code":
+def token(grant_type: str = Form(...), code: str = Form(...), redirect_uri: str = Form(...), 
+          client_id: str = Form(...), client_secret: str = Form(...)):
+    if grant_type != "authorization_code":
         raise HTTPException(status_code=400, detail="Invalid grant_type")
     
     session = Session()
-    auth_code = session.query(AuthCodeDB).filter_by(code=request.code).first()
+    auth_code = session.query(AuthCodeDB).filter_by(code=code).first()
     if not auth_code or auth_code.expires_at < datetime.utcnow():
         raise HTTPException(status_code=400, detail="Invalid or expired code")
     
-    client = session.query(ClientDB).filter_by(client_id=request.client_id).first()
-    if not client or client.client_secret != request.client_secret or client.redirect_uri != request.redirect_uri:
+    client = session.query(ClientDB).filter_by(client_id=client_id).first()
+    if not client or client.client_secret != client_secret or client.redirect_uri != redirect_uri:
         raise HTTPException(status_code=400, detail="Invalid client credentials")
     
-    access_token = create_access_token(auth_code.user_id, request.client_id, timedelta(hours=1))
+    access_token = create_access_token(auth_code.user_id, client_id, timedelta(hours=1))
     refresh_token = str(uuid.uuid4())
     token_db = TokenDB(access_token=access_token, refresh_token=refresh_token, 
-                      user_id=auth_code.user_id, client_id=request.client_id, 
+                      user_id=auth_code.user_id, client_id=client_id, 
                       expires_at=datetime.utcnow() + timedelta(hours=1))
     session.add(token_db)
     session.delete(auth_code)
@@ -183,3 +184,28 @@ def token(request: TokenRequest):
         "expires_in": 3600,
         "refresh_token": refresh_token
     }
+
+@router.get("/userinfo")
+def userinfo(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    
+    token = auth_header.split(" ")[1]
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        
+        session = Session()
+        user = session.query(UserDB).filter_by(id=user_id).first()
+        session.close()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {
+            "user_id": user.id,
+            "username": user.username
+        }
+    except jwt.JWTError:
+        raise HTTPException(status_code=401, detail="Invalid token")

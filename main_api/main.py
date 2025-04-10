@@ -1,9 +1,11 @@
-from fastapi import FastAPI, Request, Path, Body
+from fastapi import FastAPI, Request, Path, Body, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from fastapi.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 import httpx
 import subprocess
 import os
@@ -107,6 +109,8 @@ async def post_to_instantdb(thread_id: str, message: str):
         result = response.json()
         return result
 
+# hi there this is to hot reload
+
 @app.post("/threads/{thread_id}")
 async def process_thread_message(
     thread_id: str = Path(..., description="The ID of the thread"),
@@ -132,3 +136,7 @@ async def process_thread_message(
         }
     except Exception as e:
         return {"error": str(e)}
+
+@app.get("/callback")
+async def callback(code: str, state: str):
+    return {"code": code, "state": state}
