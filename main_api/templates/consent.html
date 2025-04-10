@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Consent</title>
+</head>
+
+<body>
+    <h1>Authorize Application</h1>
+    <p>Do you consent to share your data with the client?</p>
+    <p>Scopes: {{ scope }}</p>
+    <form method="post" action="/consent">
+        <input type="hidden" name="client_id" value="{{ client_id }}">
+        <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+        <input type="hidden" name="scope" value="{{ scope }}">
+        <input type="hidden" name="state" value="{{ state }}">
+        <input type="radio" name="consent" value="yes"> Yes
+        <input type="radio" name="consent" value="no"> No<br>
+        <input type="submit" value="Submit">
+    </form>
+</body>
+
+</html>

@@ -8,3 +8,9 @@ python-dotenv
 supabase
 scrapybara
 loguru
+
+pydantic
+passlib[bcrypt]
+python-jose[cryptography]
+sqlalchemy
+jinja2
