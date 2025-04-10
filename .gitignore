@@ -10,3 +10,4 @@ supervisord.log
 supervisord.pid
 
 **/*.log
+ara.db

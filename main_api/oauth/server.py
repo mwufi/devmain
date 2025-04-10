@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request, Form
+from fastapi import APIRouter, HTTPException, Depends, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import Response
 from starlette.middleware.sessions import SessionMiddleware
@@ -11,8 +11,7 @@ from jose import jwt
 from datetime import datetime, timedelta
 import uuid
 
-app = FastAPI()
-app.add_middleware(SessionMiddleware, secret_key="some_secret_key")
+router = APIRouter(prefix="/oauth2")
 templates = Jinja2Templates(directory="templates")
 
 # Security setup
@@ -66,7 +65,7 @@ def create_access_token(user_id: int, client_id: str, expires_delta: timedelta):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 # Routes
-@app.post("/register_client")
+@router.post("/register_client")
 def register_client(redirect_uri: str):
     client_id = generate_client_id()
     client_secret = generate_client_secret()
@@ -77,7 +76,7 @@ def register_client(redirect_uri: str):
     session.close()
     return {"client_id": client_id, "client_secret": client_secret}
 
-@app.post("/register_user")
+@router.post("/register_user")
 def register_user(username: str, password: str):
     hashed_password = pwd_context.hash(password)
     session = Session()
@@ -87,7 +86,7 @@ def register_user(username: str, password: str):
     session.close()
     return {"message": "User registered"}
 
-@app.get("/authorize")
+@router.get("/authorize")
 def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: str, state: str, response_type: str = "code"):
     session = Session()
     client = session.query(ClientDB).filter_by(client_id=client_id).first()
@@ -105,7 +104,7 @@ def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: st
         "request": request, "client_id": client_id, "redirect_uri": redirect_uri, "scope": scope, "state": state
     })
 
-@app.post("/authorize")
+@router.post("/authorize")
 def authorize_post(request: Request, username: str = Form(...), password: str = Form(...), 
                   client_id: str = Form(...), redirect_uri: str = Form(...), scope: str = Form(...), state: str = Form(...)):
     session = Session()
@@ -119,7 +118,7 @@ def authorize_post(request: Request, username: str = Form(...), password: str = 
         "request": request, "client_id": client_id, "redirect_uri": redirect_uri, "scope": scope, "state": state
     })
 
-@app.post("/consent")
+@router.post("/consent")
 def consent_post(request: Request, consent: str = Form(...), client_id: str = Form(...), 
                 redirect_uri: str = Form(...), scope: str = Form(...), state: str = Form(...)):
     user_id = request.session.get("user_id")
@@ -147,7 +146,7 @@ class TokenRequest(BaseModel):
     client_id: str
     client_secret: str
 
-@app.post("/token")
+@router.post("/token")
 def token(request: TokenRequest):
     if request.grant_type != "authorization_code":
         raise HTTPException(status_code=400, detail="Invalid grant_type")

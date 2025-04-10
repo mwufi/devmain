@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 import httpx
 import subprocess
 import os
@@ -11,6 +12,7 @@ from db import get_whales
 from typing import List, Dict, Any
 from pydantic import BaseModel
 from loguru import logger
+from oauth.server import router as oauth_router
 
 class UserMessage(BaseModel):
     message: str = None
@@ -25,6 +27,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add session middleware for OAuth
+app.add_middleware(SessionMiddleware, secret_key="some_secret_key")
+
+# Include OAuth router
+app.include_router(oauth_router)
 
 templates = Jinja2Templates(directory="templates")
 
