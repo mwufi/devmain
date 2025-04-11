@@ -15,6 +15,7 @@ from typing import List, Dict, Any
 from pydantic import BaseModel
 from loguru import logger
 from oauth.server import router as oauth_router
+import secrets
 
 class UserMessage(BaseModel):
     message: str = None
@@ -31,7 +32,14 @@ app.add_middleware(
 )
 
 # Add session middleware for OAuth
-app.add_middleware(SessionMiddleware, secret_key="some_secret_key")
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=secrets.token_hex(32),  # Generate a secure random key
+    session_cookie="oauth_session",
+    max_age=3600,  # 1 hour
+    same_site="lax",
+    https_only=False  # Allow cookies in development
+)
 
 # Include OAuth router
 app.include_router(oauth_router)

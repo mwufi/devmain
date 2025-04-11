@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Request, Form
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import Response
+from fastapi.responses import Response, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, String, Integer, DateTime
@@ -36,6 +36,8 @@ class UserDB(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True)
     password = Column(String)
+    display_name = Column(String)
+    email = Column(String, unique=True)
 
 class AuthCodeDB(Base):
     __tablename__ = "auth_codes"
@@ -52,6 +54,16 @@ class TokenDB(Base):
     client_id = Column(String)
     expires_at = Column(DateTime)
 
+class UserSession(Base):
+    __tablename__ = "user_sessions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer)
+    session_id = Column(String, unique=True)
+    client_id = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_active = Column(DateTime, default=datetime.utcnow)
+    is_active = Column(Integer, default=1)
+
 Base.metadata.create_all(engine)
 
 # Utility functions
@@ -64,6 +76,29 @@ def generate_client_secret():
 def create_access_token(user_id: int, client_id: str, expires_delta: timedelta):
     to_encode = {"sub": str(user_id), "client_id": client_id, "exp": datetime.utcnow() + expires_delta}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def recreate_tables():
+    try:
+        # Drop all tables
+        Base.metadata.drop_all(engine)
+        logger.info("Dropped all existing tables")
+        
+        # Create all tables
+        Base.metadata.create_all(engine)
+        logger.info("Created all tables with new schema")
+    except Exception as e:
+        logger.error(f"Error recreating tables: {e}")
+
+# Update ensure_tables to use recreate_tables
+def ensure_tables():
+    try:
+        recreate_tables()
+        logger.info("All database tables created successfully")
+    except Exception as e:
+        logger.error(f"Error creating database tables: {e}")
+
+# Call it when the module is imported
+ensure_tables()
 
 # Routes
 @router.post("/register_client")
@@ -78,14 +113,40 @@ def register_client(redirect_uri: str):
     return {"client_id": client_id, "client_secret": client_secret}
 
 @router.post("/register_user")
-def register_user(username: str, password: str):
-    hashed_password = pwd_context.hash(password)
-    session = Session()
-    user = UserDB(username=username, password=hashed_password)
-    session.add(user)
-    session.commit()
-    session.close()
-    return {"message": "User registered"}
+def register_user(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    display_name: str = Form(None),
+    email: str = Form(None)
+):
+    try:
+        logger.info(f"Registering new user: {username}")
+        hashed_password = pwd_context.hash(password)
+        session = Session()
+        
+        # Check if username already exists
+        existing_user = session.query(UserDB).filter_by(username=username).first()
+        if existing_user:
+            session.close()
+            return {"error": "Username already exists"}
+        
+        # Create new user with optional fields
+        user = UserDB(
+            username=username,
+            password=hashed_password,
+            display_name=display_name or username,  # Use username as display_name if not provided
+            email=email
+        )
+        session.add(user)
+        session.commit()
+        session.close()
+        
+        logger.info(f"User registered successfully: {username}")
+        return {"message": "User registered successfully"}
+    except Exception as e:
+        logger.error(f"Error registering user: {str(e)}", exc_info=True)
+        return {"error": str(e)}
 
 @router.get("/test_authorize")
 def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: str, state: str, response_type: str = "code"):
@@ -98,17 +159,35 @@ def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: st
     session = Session()
     client = session.query(ClientDB).filter_by(client_id=client_id).first()
     session.close()
+    
     if not client or client.redirect_uri != redirect_uri:
         raise HTTPException(status_code=400, detail="Invalid client or redirect_uri")
     
-    user_id = request.session.get("user_id")
-    if not user_id:
+    # Check if user is logged in
+    session_id = request.session.get("session_id")
+    if not session_id:
         return templates.TemplateResponse("login.html", {
-            "request": request, "client_id": client_id, "redirect_uri": redirect_uri, "scope": scope, "state": state
+            "request": request,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": scope,
+            "state": state
         })
     
+    # Get all active sessions for the current user
+    db_session = Session()
+    active_sessions = db_session.query(UserSession, UserDB).join(
+        UserDB, UserSession.user_id == UserDB.id
+    ).filter(UserSession.is_active == 1).all()
+    db_session.close()
+    
     return templates.TemplateResponse("consent.html", {
-        "request": request, "client_id": client_id, "redirect_uri": redirect_uri, "scope": scope, "state": state
+        "request": request,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+        "state": state,
+        "active_sessions": active_sessions
     })
 
 @router.post("/authorize")
@@ -251,3 +330,161 @@ def userinfo(request: Request):
         }
     except jwt.JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+@router.get("/dashboard")
+def dashboard(request: Request):
+    try:
+        session = Session()
+        # Get all active sessions
+        active_sessions = session.query(UserSession, UserDB).join(
+            UserDB, UserSession.user_id == UserDB.id
+        ).filter(UserSession.is_active == 1).all()
+        
+        # Get all clients
+        clients = session.query(ClientDB).all()
+        
+        # Get all users
+        users = session.query(UserDB).all()
+        
+        session.close()
+        
+        return templates.TemplateResponse("dashboard.html", {
+            "request": request,
+            "active_sessions": active_sessions,
+            "clients": clients,
+            "users": users
+        })
+    except Exception as e:
+        logger.error(f"Error in dashboard: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/login")
+def login_get(request: Request):
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "error": None
+    })
+
+@router.post("/login")
+def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+    try:
+        logger.info(f"Login attempt for username: {username}")
+        session = Session()
+        
+        # Find user
+        user = session.query(UserDB).filter_by(username=username).first()
+        if not user:
+            logger.warning(f"User not found: {username}")
+            session.close()
+            return templates.TemplateResponse("login.html", {
+                "request": request,
+                "error": "Invalid credentials"
+            })
+        
+        # Verify password
+        if not pwd_context.verify(password, user.password):
+            logger.warning(f"Invalid password for user: {username}")
+            session.close()
+            return templates.TemplateResponse("login.html", {
+                "request": request,
+                "error": "Invalid credentials"
+            })
+        
+        logger.info(f"User authenticated: {username}")
+        
+        # Create new session
+        session_id = str(uuid.uuid4())
+        logger.info(f"Creating new session: {session_id} for user: {username}")
+        
+        user_session = UserSession(
+            user_id=user.id,
+            session_id=session_id,
+            client_id=None  # No specific client for dashboard login
+        )
+        session.add(user_session)
+        session.commit()
+        
+        # Store session ID in request session
+        request.session["session_id"] = session_id
+        request.session["user_id"] = user.id
+        logger.info(f"Session stored for user: {username}")
+        
+        session.close()
+        return RedirectResponse(url="/oauth2/dashboard", status_code=303)
+    except Exception as e:
+        logger.error(f"Error in login: {str(e)}", exc_info=True)
+        return templates.TemplateResponse("login.html", {
+            "request": request,
+            "error": f"An error occurred during login: {str(e)}"
+        })
+
+@router.post("/logout")
+def logout(request: Request):
+    session_id = request.session.get("session_id")
+    if session_id:
+        db_session = Session()
+        user_session = db_session.query(UserSession).filter_by(session_id=session_id).first()
+        if user_session:
+            user_session.is_active = 0
+            db_session.commit()
+        db_session.close()
+    
+    # Clear session
+    request.session.clear()
+    return RedirectResponse(url="/oauth2/login", status_code=303)
+
+@router.post("/switch_account")
+def switch_account(request: Request, user_id: int = Form(...)):
+    session_id = request.session.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    
+    db_session = Session()
+    # Deactivate current session
+    current_session = db_session.query(UserSession).filter_by(session_id=session_id).first()
+    if current_session:
+        current_session.is_active = 0
+    
+    # Create new session for selected user
+    new_session_id = str(uuid.uuid4())
+    new_session = UserSession(
+        user_id=user_id,
+        session_id=new_session_id,
+        client_id=current_session.client_id if current_session else None
+    )
+    db_session.add(new_session)
+    db_session.commit()
+    
+    # Update request session
+    request.session["session_id"] = new_session_id
+    request.session["user_id"] = user_id
+    
+    db_session.close()
+    return RedirectResponse(url="/oauth2/dashboard", status_code=303)
+
+@router.get("/")
+def oauth_root(request: Request):
+    session_id = request.session.get("session_id")
+    if session_id:
+        return RedirectResponse(url="/oauth2/dashboard", status_code=303)
+    return RedirectResponse(url="/oauth2/login", status_code=303)
+
+@router.get("/debug/db")
+def debug_db():
+    try:
+        session = Session()
+        users = session.query(UserDB).all()
+        clients = session.query(ClientDB).all()
+        user_sessions = session.query(UserSession).all()
+        
+        result = {
+            "users": [{"id": u.id, "username": u.username} for u in users],
+            "clients": [{"client_id": c.client_id, "redirect_uri": c.redirect_uri} for c in clients],
+            "sessions": [{"session_id": s.session_id, "user_id": s.user_id, "is_active": s.is_active} for s in user_sessions]
+        }
+        
+        session.close()
+        return result
+    except Exception as e:
+        logger.error(f"Debug error: {str(e)}", exc_info=True)
+        return {"error": str(e)}

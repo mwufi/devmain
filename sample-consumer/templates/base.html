@@ -85,21 +85,32 @@
                             <div class="space-y-2 text-sm">
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Access Token:</span>
-                                    <span class="text-gray-900 font-mono text-xs">{{ token_info.access_token }}</span>
+                                    <span class="text-gray-900 font-mono text-xs truncate cursor-pointer"
+                                        onclick="copyToClipboard('{{ token_info.access_token }}')">{{
+                                        token_info.access_token }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Refresh Token:</span>
-                                    <span class="text-gray-900 font-mono text-xs">{{ token_info.refresh_token }}</span>
+                                    <span class="text-gray-900 font-mono text-xs truncate cursor-pointer"
+                                        onclick="copyToClipboard('{{ token_info.refresh_token }}')">{{
+                                        token_info.refresh_token }}</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Expires In:</span>
-                                    <span class="text-gray-900">{{ token_info.expires_in }} seconds</span>
+                                    <span class="text-gray-900" id="expiresIn">{{ token_info.expires_in }}
+                                        seconds</span>
                                 </div>
                                 <div class="flex justify-between">
                                     <span class="text-gray-500">Expires At:</span>
-                                    <span class="text-gray-900">{{ token_info.expires_at }}</span>
+                                    <span class="text-gray-900" id="expiresAt">{{ token_info.expires_at }}</span>
                                 </div>
                             </div>
+                            <form action="/refresh-token" method="post" class="mt-4">
+                                <button type="submit"
+                                    class="w-full inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-700 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                                    Refresh Token
+                                </button>
+                            </form>
                         </div>
 
                         <div>
@@ -112,17 +123,7 @@
                                 </div>
                                 {% endfor %}
                             </div>
-                        </div>
-
-                        <div class="pt-4">
-                            <form action="/refresh-token" method="post" class="mb-4">
-                                <button type="submit"
-                                    class="w-full inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-700 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
-                                    Refresh Token
-                                </button>
-                            </form>
-
-                            <form action="/set-session" method="get" class="space-y-2">
+                            <form action="/set-session" method="get" class="mt-4 space-y-2">
                                 <input type="text" name="key" placeholder="Key" required
                                     class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-xs px-3 py-2">
                                 <input type="text" name="value" placeholder="Value" required
@@ -145,7 +146,32 @@
         </div>
     </div>
 
-    {% block scripts %}{% endblock %}
+    {% block scripts %}
+    <script>
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Copied to clipboard');
+            });
+        }
+
+        function updateExpiration() {
+            const expiresInElement = document.getElementById('expiresIn');
+            const expiresAtElement = document.getElementById('expiresAt');
+            let expiresIn = parseInt(expiresInElement.textContent.split(' ')[0]);
+
+            if (expiresIn > 0) {
+                expiresIn -= 1;
+                expiresInElement.textContent = `${expiresIn} seconds`;
+
+                const expiresAt = new Date(expiresAtElement.textContent);
+                expiresAt.setSeconds(expiresAt.getSeconds() - 1);
+                expiresAtElement.textContent = expiresAt.toISOString();
+            }
+        }
+
+        setInterval(updateExpiration, 1000);
+    </script>
+    {% endblock %}
 </body>
 
 </html>

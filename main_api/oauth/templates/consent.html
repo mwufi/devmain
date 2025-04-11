@@ -2,23 +2,93 @@
 <html>
 
 <head>
-    <title>Authorize Application</title>
+    <title>Authorize Access</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .button.allow {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .button.deny {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .button.switch {
+            background-color: #2196F3;
+            color: white;
+        }
+
+        .account-list {
+            margin: 20px 0;
+        }
+
+        .account-item {
+            padding: 10px;
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+    </style>
 </head>
 
 <body>
-    <h1>Authorize Application</h1>
-    <p>The application {{ client_id }} is requesting access to your account.</p>
-    <p>Scope: {{ scope }}</p>
-    <form method="POST" action="/oauth2/consent" enctype="multipart/form-data">
-        <input type="hidden" name="client_id" value="{{ client_id }}">
-        <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
-        <input type="hidden" name="scope" value="{{ scope }}">
-        <input type="hidden" name="state" value="{{ state }}">
-        <div>
-            <button type="submit" name="consent" value="yes">Allow</button>
-            <button type="submit" name="consent" value="no">Deny</button>
+    <h1>Authorize Access</h1>
+
+    <div class="section">
+        <h2>Active Accounts</h2>
+        <div class="account-list">
+            {% for session, user in active_sessions %}
+            <div class="account-item">
+                <strong>{{ user.username }}</strong>
+                <form action="/oauth2/switch_account" method="post" style="display: inline;">
+                    <input type="hidden" name="user_id" value="{{ user.id }}">
+                    <button type="submit" class="button switch">Switch to this account</button>
+                </form>
+            </div>
+            {% endfor %}
         </div>
-    </form>
+    </div>
+
+    <div class="section">
+        <h2>Authorization Request</h2>
+        <p>The application {{ client_id }} is requesting access to your account.</p>
+        <p>Scope: {{ scope }}</p>
+
+        <form action="/oauth2/consent" method="post">
+            <input type="hidden" name="client_id" value="{{ client_id }}">
+            <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}">
+            <input type="hidden" name="scope" value="{{ scope }}">
+            <input type="hidden" name="state" value="{{ state }}">
+
+            <button type="submit" name="consent" value="yes" class="button allow">Allow</button>
+            <button type="submit" name="consent" value="no" class="button deny">Deny</button>
+        </form>
+    </div>
 </body>
 
 </html>

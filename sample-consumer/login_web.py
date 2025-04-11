@@ -34,8 +34,8 @@ app.add_middleware(
 )
 
 # OAuth2 configuration
-os.environ['CLIENT_ID'] = '7d55c1db-a93d-431a-87c2-165a25929eac'
-os.environ['CLIENT_SECRET'] = '5bb01630-ff69-4290-bbb2-90b60f1998c6'
+os.environ['CLIENT_ID'] = '9fe28be1-82e5-42ff-90f3-1c7bbb101531'
+os.environ['CLIENT_SECRET'] = '18b60d32-95a4-457a-819f-30da5cca7a6e'
 
 ARA_SERVER_URL = "http://localhost:8000/oauth2"
 CLIENT_ID = os.environ['CLIENT_ID']
@@ -52,6 +52,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)):
     user = get_user_by_access_token(db, access_token)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    logger.info(f"Current user: {user}")
     return user
 
 @app.get("/")
@@ -124,29 +125,32 @@ async def get_prompts(request: Request, db: Session = Depends(get_db)):
     return {"prompts": [{"id": p.id, "title": p.title, "content": p.content} for p in prompts]}
 
 @app.post("/prompts")
-async def create_prompt(
+async def create_prompt_endpoint(
     request: Request,
     title: str = Form(...),
     content: str = Form(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    await create_prompt(db, current_user.id, title, content)
+    create_prompt(db, current_user.id, title, content)
     return RedirectResponse(url="/", status_code=303)
 
-@app.delete("/prompts/{prompt_id}")
-async def delete_prompt(
+@app.post("/prompts/{prompt_id}")
+async def handle_prompt_operation(
     prompt_id: int,
     request: Request,
+    method_override: str = Form(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    if not await delete_prompt(db, prompt_id, current_user.id):
-        raise HTTPException(status_code=404, detail="Prompt not found")
-    return RedirectResponse(url="/", status_code=303)
+    if method_override == "delete":
+        if not delete_prompt(db, prompt_id, current_user.id):
+            raise HTTPException(status_code=404, detail="Prompt not found")
+        return RedirectResponse(url="/", status_code=303)
+    raise HTTPException(status_code=405, detail="Method Not Allowed")
 
 @app.put("/prompts/{prompt_id}")
-async def update_prompt(
+async def update_prompt_endpoint(
     prompt_id: int,
     request: Request,
     title: str,
@@ -154,7 +158,7 @@ async def update_prompt(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    prompt = await update_prompt(db, prompt_id, current_user.id, title, content)
+    prompt = update_prompt(db, prompt_id, current_user.id, title, content)
     if not prompt:
         raise HTTPException(status_code=404, detail="Prompt not found")
     return RedirectResponse(url="/", status_code=303)

@@ -43,16 +43,16 @@ def register_user():
     # Configuration
     ARA_SERVER_URL = "http://localhost:8000/oauth2"
     
-    # Prepare registration data
+    # Prepare registration data as form data
     data = {
         "username": username,
         "password": password
     }
     
-    # Make the registration request
+    # Make the registration request with form data
     response = requests.post(
         f"{ARA_SERVER_URL}/register_user",
-        json=data
+        data=data
     )
     
     if response.status_code == 200:

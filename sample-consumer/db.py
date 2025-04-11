@@ -2,6 +2,8 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Foreign
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timedelta
+from fastapi import Request, Form, Depends
+from fastapi.responses import RedirectResponse
 
 # Database setup
 Base = declarative_base()
@@ -69,27 +71,27 @@ def create_or_update_user(db: Session, ara_user_id: str, username: str,
 def get_user_prompts(db: Session, user_id: int):
     return db.query(Prompt).filter_by(user_id=user_id).order_by(Prompt.updated_at.desc()).all()
 
-async def create_prompt(db: Session, user_id: int, title: str, content: str) -> Prompt:
+def create_prompt(db: Session, user_id: int, title: str, content: str) -> Prompt:
     prompt = Prompt(user_id=user_id, title=title, content=content)
     db.add(prompt)
-    await db.commit()
-    await db.refresh(prompt)
+    db.commit()
+    db.refresh(prompt)
     return prompt
 
-async def delete_prompt(db: Session, prompt_id: int, user_id: int) -> bool:
-    prompt = await db.query(Prompt).filter(Prompt.id == prompt_id, Prompt.user_id == user_id).first()
+def delete_prompt(db: Session, prompt_id: int, user_id: int) -> bool:
+    prompt = db.query(Prompt).filter(Prompt.id == prompt_id, Prompt.user_id == user_id).first()
     if prompt:
-        await db.delete(prompt)
-        await db.commit()
+        db.delete(prompt)
+        db.commit()
         return True
     return False
 
-async def update_prompt(db: Session, prompt_id: int, user_id: int, title: str, content: str) -> Prompt | None:
-    prompt = await db.query(Prompt).filter(Prompt.id == prompt_id, Prompt.user_id == user_id).first()
+def update_prompt(db: Session, prompt_id: int, user_id: int, title: str, content: str) -> Prompt | None:
+    prompt = db.query(Prompt).filter(Prompt.id == prompt_id, Prompt.user_id == user_id).first()
     if prompt:
         prompt.title = title
         prompt.content = content
         prompt.updated_at = datetime.utcnow()
-        await db.commit()
-        await db.refresh(prompt)
+        db.commit()
+        db.refresh(prompt)
     return prompt 
