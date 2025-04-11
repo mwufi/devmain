@@ -30,6 +30,7 @@ class ClientDB(Base):
     client_id = Column(String, primary_key=True)
     client_secret = Column(String)
     redirect_uri = Column(String)
+    name = Column(String)
 
 class UserDB(Base):
     __tablename__ = "users"
@@ -103,11 +104,16 @@ ensure_tables()
 
 # Routes
 @router.post("/register_client")
-def register_client(redirect_uri: str):
+def register_client(name: str, redirect_uri: str):
     client_id = generate_client_id()
     client_secret = generate_client_secret()
     session = Session()
-    client = ClientDB(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri)
+    client = ClientDB(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        name=name
+    )
     session.add(client)
     session.commit()
     session.close()
@@ -258,7 +264,8 @@ def consent_post(request: Request, consent: str = Form(...), client_id: str = Fo
 
 class TokenRequest(BaseModel):
     grant_type: str
-    code: str
+    code: str = None
+    refresh_token: str = None
     redirect_uri: str
     client_id: str
     client_secret: str
@@ -481,19 +488,39 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
         })
 
 @router.post("/logout")
-def logout(request: Request):
-    session_id = request.session.get("session_id")
-    if session_id:
+def logout(request: Request, session_id: str = Form(None)):
+    try:
         db_session = Session()
-        user_session = db_session.query(UserSession).filter_by(session_id=session_id).first()
-        if user_session:
-            user_session.is_active = 0
-            db_session.commit()
+        
+        # If specific session_id is provided, log out that session
+        if session_id:
+            user_session = db_session.query(UserSession).filter_by(session_id=session_id).first()
+            if user_session:
+                user_session.is_active = 0
+                db_session.commit()
+                logger.info(f"Logged out session: {session_id}")
+        else:
+            # Otherwise, log out the current session
+            current_session_id = request.session.get("session_id")
+            if current_session_id:
+                user_session = db_session.query(UserSession).filter_by(session_id=current_session_id).first()
+                if user_session:
+                    user_session.is_active = 0
+                    db_session.commit()
+                    logger.info(f"Logged out current session: {current_session_id}")
+        
         db_session.close()
-    
-    # Clear session
-    request.session.clear()
-    return RedirectResponse(url="/oauth2/login", status_code=303)
+        
+        # Clear the session if it's the current session being logged out
+        if not session_id:
+            request.session.clear()
+            return RedirectResponse(url="/oauth2/login", status_code=303)
+        
+        # If logging out another session, stay on dashboard
+        return RedirectResponse(url="/oauth2/dashboard", status_code=303)
+    except Exception as e:
+        logger.error(f"Error in logout: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/switch_account")
 def switch_account(request: Request, user_id: int = Form(...)):
@@ -550,3 +577,13 @@ def debug_db():
     except Exception as e:
         logger.error(f"Debug error: {str(e)}", exc_info=True)
         return {"error": str(e)}
+
+@router.post("/debug/recreate_tables")
+def debug_recreate_tables():
+    """Debug endpoint to recreate all database tables"""
+    try:
+        recreate_tables()
+        return {"message": "Tables recreated successfully"}
+    except Exception as e:
+        logger.error(f"Error recreating tables: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -5,12 +5,13 @@ import os
 from urllib.parse import urlencode
 from getpass import getpass
 
-def register_client(redirect_uri):
+def register_client(name, redirect_uri):
     # Configuration
     ARA_SERVER_URL = "http://localhost:8000/oauth2"
     
     # Prepare query parameters
     params = {
+        "name": name,
         "redirect_uri": redirect_uri
     }
     
@@ -68,7 +69,8 @@ def main():
     
     # Client registration command
     client_parser = subparsers.add_parser('client', help='Register a new OAuth client')
-    client_parser.add_argument('--uri', required=True, help='The redirect URI to register')
+    client_parser.add_argument('--name', required=True, help='The name of the client')
+    client_parser.add_argument('--redirect_uri', required=True, help='The redirect URI to register')
     
     # User registration command
     user_parser = subparsers.add_parser('user', help='Register a new user')
@@ -76,7 +78,7 @@ def main():
     args = parser.parse_args()
     
     if args.command == 'client':
-        register_client(args.uri)
+        register_client(args.name, args.redirect_uri)
     elif args.command == 'user':
         register_user()
     else:

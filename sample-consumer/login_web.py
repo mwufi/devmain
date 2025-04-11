@@ -34,8 +34,8 @@ app.add_middleware(
 )
 
 # OAuth2 configuration
-os.environ['CLIENT_ID'] = 'aced369e-2968-4034-8308-94a8dcc8f7fa'
-os.environ['CLIENT_SECRET'] = '8acb83c4-b3bc-4636-be12-189e9864df2f'
+os.environ['CLIENT_ID'] = '579b83f4-0f82-4ac3-8bdc-d36615f5b473'
+os.environ['CLIENT_SECRET'] = '0795470e-4bf1-40f1-a97f-1b3fb61e82'
 
 ARA_SERVER_URL = "http://localhost:8000/oauth2"
 CLIENT_ID = os.environ['CLIENT_ID']
@@ -219,56 +219,56 @@ async def callback(request: Request, code: str | None = None, state: str | None 
     async with httpx.AsyncClient() as client:
         response = await client.post(token_url, data=token_data)
     
-    if response.status_code == 200:
-        token_info = response.json()
-        access_token = token_info.get("access_token")
-        refresh_token = token_info.get("refresh_token")
-        expires_in = token_info.get("expires_in", 3600)
-        expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
-        
-        # Get user info from Ara using a new client
-        async with httpx.AsyncClient() as user_client:
-            user_response = await user_client.get(
-                f"{ARA_SERVER_URL}/userinfo",
-                headers={"Authorization": f"Bearer {access_token}"}
-            )
+        if response.status_code == 200:
+            token_info = response.json()
+            access_token = token_info.get("access_token")
+            refresh_token = token_info.get("refresh_token")
+            expires_in = token_info.get("expires_in", 3600)
+            expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
             
-            if user_response.status_code != 200:
-                return templates.TemplateResponse(
-                    "error.html",
-                    {
-                        "request": request,
-                        "error_message": "Failed to fetch user information",
-                        "show_login": False
-                    }
+            # Get user info from Ara using a new client
+            async with httpx.AsyncClient() as user_client:
+                user_response = await user_client.get(
+                    f"{ARA_SERVER_URL}/userinfo",
+                    headers={"Authorization": f"Bearer {access_token}"}
                 )
-            
-            user_data = user_response.json()
-            ara_user_id = user_data["user_id"]
-            username = user_data["username"]
-            
-            # Store or update user in database
-            user = create_or_update_user(
-                db, ara_user_id, username, access_token, refresh_token, expires_at
+                
+                if user_response.status_code != 200:
+                    return templates.TemplateResponse(
+                        "error.html",
+                        {
+                            "request": request,
+                            "error_message": "Failed to fetch user information",
+                            "show_login": False
+                        }
+                    )
+                
+                user_data = user_response.json()
+                ara_user_id = user_data["user_id"]
+                username = user_data["username"]
+                
+                # Store or update user in database
+                user = create_or_update_user(
+                    db, ara_user_id, username, access_token, refresh_token, expires_at
+                )
+                
+                # Store access token in session
+                request.session["access_token"] = access_token
+                
+                # Clear the state after successful verification
+                request.session.pop("state", None)
+                
+                # Redirect to home page
+                return RedirectResponse(url="/", status_code=303)
+        else:
+            return templates.TemplateResponse(
+                "error.html",
+                {
+                    "request": request,
+                    "error_message": "Failed to obtain access token",
+                    "show_login": False
+                }
             )
-            
-            # Store access token in session
-            request.session["access_token"] = access_token
-            
-            # Clear the state after successful verification
-            request.session.pop("state", None)
-            
-            # Redirect to home page
-            return RedirectResponse(url="/", status_code=303)
-    else:
-        return templates.TemplateResponse(
-            "error.html",
-            {
-                "request": request,
-                "error_message": "Failed to obtain access token",
-                "show_login": False
-            }
-        )
 
 @app.post("/refresh-token")
 async def refresh_token(request: Request, db: Session = Depends(get_db)):
