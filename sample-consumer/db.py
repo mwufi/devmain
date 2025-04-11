@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timedelta
@@ -26,6 +26,7 @@ class Prompt(Base):
     user_id = Column(Integer, ForeignKey("users.id"))
     title = Column(String)
     content = Column(String)
+    is_public = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -69,10 +70,12 @@ def create_or_update_user(db: Session, ara_user_id: str, username: str,
 
 # Prompt operations
 def get_user_prompts(db: Session, user_id: int):
-    return db.query(Prompt).filter_by(user_id=user_id).order_by(Prompt.updated_at.desc()).all()
+    return db.query(Prompt).filter(
+        (Prompt.user_id == user_id) | (Prompt.is_public == True)
+    ).order_by(Prompt.updated_at.desc()).all()
 
-def create_prompt(db: Session, user_id: int, title: str, content: str) -> Prompt:
-    prompt = Prompt(user_id=user_id, title=title, content=content)
+def create_prompt(db: Session, user_id: int, title: str, content: str, is_public: bool = False) -> Prompt:
+    prompt = Prompt(user_id=user_id, title=title, content=content, is_public=is_public)
     db.add(prompt)
     db.commit()
     db.refresh(prompt)

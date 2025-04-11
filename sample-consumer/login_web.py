@@ -34,8 +34,8 @@ app.add_middleware(
 )
 
 # OAuth2 configuration
-os.environ['CLIENT_ID'] = '579b83f4-0f82-4ac3-8bdc-d36615f5b473'
-os.environ['CLIENT_SECRET'] = '0795470e-4bf1-40f1-a97f-1b3fb61e82'
+os.environ['CLIENT_ID'] = '8b438f0b-cb27-4ec9-9a53-bc33a0ab248f'
+os.environ['CLIENT_SECRET'] = '327fe191-facc-4ebc-b77e-01eceadc7599'
 
 ARA_SERVER_URL = "http://localhost:8000/oauth2"
 CLIENT_ID = os.environ['CLIENT_ID']
@@ -129,10 +129,11 @@ async def create_prompt_endpoint(
     request: Request,
     title: str = Form(...),
     content: str = Form(...),
+    is_public: bool = Form(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    create_prompt(db, current_user.id, title, content)
+    create_prompt(db, current_user.id, title, content, is_public)
     return RedirectResponse(url="/", status_code=303)
 
 @app.post("/prompts/{prompt_id}")

@@ -14,6 +14,7 @@ import uuid
 
 router = APIRouter(prefix="/oauth2")
 templates = Jinja2Templates(directory="oauth/templates")
+logger.add("oauth.log")
 
 # Security setup
 SECRET_KEY = "another_secret_key"
@@ -273,22 +274,38 @@ class TokenRequest(BaseModel):
 @router.post("/token")
 def token(grant_type: str = Form(...), code: str = Form(None), refresh_token: str = Form(None), 
           redirect_uri: str = Form(...), client_id: str = Form(...), client_secret: str = Form(...)):
+    logger.info(f"Token request received - grant_type: {grant_type}, client_id: {client_id}, redirect_uri: {redirect_uri}")
     session = Session()
     
     # Verify client credentials
     client = session.query(ClientDB).filter_by(client_id=client_id).first()
-    if not client or client.client_secret != client_secret or client.redirect_uri != redirect_uri:
+    if not client:
+        logger.info(f"Client not found: {client_id}")
+        session.close()
+        raise HTTPException(status_code=400, detail="Invalid client credentials")
+    if client.client_secret != client_secret:
+        logger.info(f"Invalid client secret for client: {client_id}")
+        session.close()
+        raise HTTPException(status_code=400, detail="Invalid client credentials")
+    if client.redirect_uri != redirect_uri:
+        logger.info(f"Invalid redirect URI for client: {client_id}. Expected: {client.redirect_uri}, Got: {redirect_uri}")
         session.close()
         raise HTTPException(status_code=400, detail="Invalid client credentials")
     
     if grant_type == "authorization_code":
         if not code:
+            logger.info("No code provided for authorization_code grant type")
             session.close()
             raise HTTPException(status_code=400, detail="Code is required for authorization_code grant type")
         
         # Verify authorization code
         auth_code = session.query(AuthCodeDB).filter_by(code=code).first()
-        if not auth_code or auth_code.expires_at < datetime.utcnow():
+        if not auth_code:
+            logger.info(f"Authorization code not found: {code}")
+            session.close()
+            raise HTTPException(status_code=400, detail="Invalid or expired code")
+        if auth_code.expires_at < datetime.utcnow():
+            logger.info(f"Authorization code expired: {code}")
             session.close()
             raise HTTPException(status_code=400, detail="Invalid or expired code")
         
@@ -303,6 +320,7 @@ def token(grant_type: str = Form(...), code: str = Form(None), refresh_token: st
         session.commit()
         session.close()
         
+        logger.info(f"Tokens generated for client: {client_id}, user: {auth_code.user_id}")
         return {
             "access_token": access_token,
             "token_type": "Bearer",
