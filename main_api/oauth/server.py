@@ -154,36 +154,78 @@ class TokenRequest(BaseModel):
     client_secret: str
 
 @router.post("/token")
-def token(grant_type: str = Form(...), code: str = Form(...), redirect_uri: str = Form(...), 
-          client_id: str = Form(...), client_secret: str = Form(...)):
-    if grant_type != "authorization_code":
-        raise HTTPException(status_code=400, detail="Invalid grant_type")
-    
+def token(grant_type: str = Form(...), code: str = Form(None), refresh_token: str = Form(None), 
+          redirect_uri: str = Form(...), client_id: str = Form(...), client_secret: str = Form(...)):
     session = Session()
-    auth_code = session.query(AuthCodeDB).filter_by(code=code).first()
-    if not auth_code or auth_code.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Invalid or expired code")
     
+    # Verify client credentials
     client = session.query(ClientDB).filter_by(client_id=client_id).first()
     if not client or client.client_secret != client_secret or client.redirect_uri != redirect_uri:
+        session.close()
         raise HTTPException(status_code=400, detail="Invalid client credentials")
     
-    access_token = create_access_token(auth_code.user_id, client_id, timedelta(hours=1))
-    refresh_token = str(uuid.uuid4())
-    token_db = TokenDB(access_token=access_token, refresh_token=refresh_token, 
-                      user_id=auth_code.user_id, client_id=client_id, 
-                      expires_at=datetime.utcnow() + timedelta(hours=1))
-    session.add(token_db)
-    session.delete(auth_code)
-    session.commit()
-    session.close()
+    if grant_type == "authorization_code":
+        if not code:
+            session.close()
+            raise HTTPException(status_code=400, detail="Code is required for authorization_code grant type")
+        
+        # Verify authorization code
+        auth_code = session.query(AuthCodeDB).filter_by(code=code).first()
+        if not auth_code or auth_code.expires_at < datetime.utcnow():
+            session.close()
+            raise HTTPException(status_code=400, detail="Invalid or expired code")
+        
+        # Generate new tokens
+        access_token = create_access_token(auth_code.user_id, client_id, timedelta(hours=1))
+        refresh_token = str(uuid.uuid4())
+        token_db = TokenDB(access_token=access_token, refresh_token=refresh_token, 
+                          user_id=auth_code.user_id, client_id=client_id, 
+                          expires_at=datetime.utcnow() + timedelta(hours=1))
+        session.add(token_db)
+        session.delete(auth_code)
+        session.commit()
+        session.close()
+        
+        return {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "refresh_token": refresh_token
+        }
     
-    return {
-        "access_token": access_token,
-        "token_type": "Bearer",
-        "expires_in": 3600,
-        "refresh_token": refresh_token
-    }
+    elif grant_type == "refresh_token":
+        if not refresh_token:
+            session.close()
+            raise HTTPException(status_code=400, detail="Refresh token is required for refresh_token grant type")
+        
+        # Verify refresh token
+        token_db = session.query(TokenDB).filter_by(refresh_token=refresh_token, client_id=client_id).first()
+        if not token_db:
+            session.close()
+            raise HTTPException(status_code=400, detail="Invalid refresh token")
+        
+        # Generate new tokens
+        new_access_token = create_access_token(token_db.user_id, client_id, timedelta(hours=1))
+        new_refresh_token = str(uuid.uuid4())
+        
+        # Update token record
+        token_db.access_token = new_access_token
+        token_db.refresh_token = new_refresh_token
+        token_db.expires_at = datetime.utcnow() + timedelta(hours=1)
+        
+        session.commit()
+        session.close()
+        
+        return {
+            "access_token": new_access_token,
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "refresh_token": new_refresh_token
+        }
+    
+    else:
+        session.close()
+        raise HTTPException(status_code=400, detail="Unsupported grant type")
 
 @router.get("/userinfo")
 def userinfo(request: Request):

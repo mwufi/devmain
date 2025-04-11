@@ -11,3 +11,4 @@ supervisord.pid
 
 **/*.log
 ara.db
+users.db

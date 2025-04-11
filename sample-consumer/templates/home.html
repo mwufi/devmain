@@ -1,38 +1,57 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>Welcome to Ara Login</h1>
 {% if not logged_in %}
-<p>Please sign in to continue</p>
-<a href="/login" class="button">Sign in with Ara</a>
+<div class="text-center py-12">
+    <h1 class="text-3xl font-bold text-gray-900 mb-4">Welcome to Ara</h1>
+    <p class="text-gray-600 mb-6">Please sign in to continue</p>
+    <a href="/login"
+        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+        Sign in with Ara
+    </a>
+</div>
 {% else %}
-<div class="profile-card">
-    <div class="profile-header">
-        <div class="profile-avatar">
-            {{ user_info.username[0].upper() }}
-        </div>
-        <div class="profile-info">
-            <h2>{{ user_info.username }}</h2>
-            <p>User ID: {{ user_info.user_id }}</p>
+<div class="space-y-8">
+    <div class="bg-white rounded-lg shadow-sm p-6">
+        <h2 class="text-2xl font-semibold text-gray-900 mb-6">Your Prompts</h2>
+        <form action="/prompts" method="post" class="space-y-4 mb-6">
+            <div>
+                <input type="text" name="title" placeholder="Prompt Title" required
+                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-4 py-3">
+            </div>
+            <div>
+                <textarea name="content" placeholder="Prompt Content" required
+                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm min-h-[100px] px-4 py-3"></textarea>
+            </div>
+            <button type="submit"
+                class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                Create Prompt
+            </button>
+        </form>
+
+        <div class="space-y-4">
+            {% for prompt in prompts %}
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <h3 class="text-lg font-medium text-gray-900">{{ prompt.title }}</h3>
+                    <div class="flex space-x-2">
+                        <button onclick="editPrompt('{{ prompt.id }}')"
+                            class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-primary-700 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                            Edit
+                        </button>
+                        <form action="/prompts/{{ prompt.id }}" method="delete" class="inline">
+                            <button type="submit"
+                                class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                                Delete
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                <p class="text-sm text-gray-600 whitespace-pre-wrap">{{ prompt.content }}</p>
+            </div>
+            {% endfor %}
         </div>
     </div>
-</div>
-<div>
-    <a href="/clear-session" class="button secondary">Logout</a>
-    <a href="#" onclick="toggleDebug()" class="button debug-toggle">Toggle Debug Info</a>
-</div>
-<div class="debug-section" id="debugSection" style="display: none;">
-    <h3>Session Debug Information</h3>
-    <ul>
-        {% for key, value in session_data.items() %}
-        <li><strong>{{ key }}:</strong> {{ value }}</li>
-        {% endfor %}
-    </ul>
-    <form action="/set-session" method="get" style="margin-top: 20px;">
-        <input type="text" name="key" placeholder="Key" required style="padding: 5px; margin-right: 5px;">
-        <input type="text" name="value" placeholder="Value" required style="padding: 5px; margin-right: 5px;">
-        <button type="submit" class="button" style="padding: 5px 10px;">Set Session Value</button>
-    </form>
 </div>
 {% endif %}
 {% endblock %}
@@ -40,9 +59,40 @@
 {% block scripts %}
 {% if logged_in %}
 <script>
-    function toggleDebug() {
-        const debugSection = document.getElementById('debugSection');
-        debugSection.style.display = debugSection.style.display === 'none' ? 'block' : 'none';
+    function editPrompt(promptId) {
+        const promptCard = document.querySelector(`[data-prompt-id="${promptId}"]`);
+        const title = promptCard.querySelector('h3').textContent;
+        const content = promptCard.querySelector('p').textContent;
+
+        // Create edit form
+        const form = document.createElement('form');
+        form.action = `/prompts/${promptId}`;
+        form.method = 'put';
+        form.className = 'space-y-4';
+        form.innerHTML = `
+            <input type="text" name="title" value="${title}" required
+                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm px-4 py-3">
+            <textarea name="content" required
+                class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm min-h-[100px] px-4 py-3">${content}</textarea>
+            <div class="flex space-x-2">
+                <button type="submit" 
+                    class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-primary-700 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                    Save
+                </button>
+                <button type="button" onclick="cancelEdit(${promptId})"
+                    class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+                    Cancel
+                </button>
+            </div>
+        `;
+
+        // Replace content with form
+        promptCard.innerHTML = '';
+        promptCard.appendChild(form);
+    }
+
+    function cancelEdit(promptId) {
+        window.location.reload();
     }
 </script>
 {% endif %}

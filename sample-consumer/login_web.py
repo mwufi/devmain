@@ -1,13 +1,21 @@
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, HTTPException, status, Depends, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
+from datetime import datetime, timedelta
+from sqlalchemy.orm import Session
+from db import (
+    User, get_db, get_user_by_access_token, get_user_by_ara_id, create_or_update_user,
+    get_user_prompts, create_prompt, delete_prompt, update_prompt
+)
 import secrets
 import os
 import httpx
 from urllib.parse import urlencode
 import uvicorn
+from loguru import logger
+
 
 app = FastAPI()
 
@@ -35,45 +43,121 @@ CLIENT_SECRET = os.environ['CLIENT_SECRET']
 REDIRECT_URI = "http://localhost:5000/callback"
 SCOPE = "profile email"
 
+# Current user dependency
+def get_current_user(request: Request, db: Session = Depends(get_db)):
+    access_token = request.session.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = get_user_by_access_token(db, access_token)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
+
 @app.get("/")
-async def home(request: Request):
+async def home(request: Request, db: Session = Depends(get_db)):
     access_token = request.session.get("access_token")
     
     if not access_token:
         return templates.TemplateResponse(
             "home.html",
-            {"request": request, "logged_in": False}
+            {
+                "request": request,
+                "logged_in": False,
+                "user_info": None,
+                "session_data": {},
+                "token_info": {}
+            }
         )
     
-    # Fetch user info if logged in
-    async with httpx.AsyncClient() as client:
-        response = await client.get(
-            f"{ARA_SERVER_URL}/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"}
-        )
-    
-    if response.status_code != 200:
+    # Get current user
+    user = get_user_by_access_token(db, access_token)
+    if not user:
         return templates.TemplateResponse(
             "error.html",
             {
                 "request": request,
-                "error_message": "Failed to fetch user information",
-                "show_login": True
+                "error_message": "User not found",
+                "show_login": True,
+                "logged_in": False,
+                "user_info": None,
+                "session_data": {},
+                "token_info": {}
             }
         )
     
-    user_info = response.json()
-    session_data = dict(request.session)
+    # Get user's prompts
+    prompts = get_user_prompts(db, user.id)
+    
+    # Calculate token expiration time
+    expires_in = (user.token_expires_at - datetime.utcnow()).total_seconds() if user.token_expires_at else 0
+    expires_in = max(0, expires_in)  # Don't show negative time
     
     return templates.TemplateResponse(
         "home.html",
         {
             "request": request,
             "logged_in": True,
-            "user_info": user_info,
-            "session_data": session_data
+            "user_info": {"username": user.username, "user_id": user.ara_user_id},
+            "session_data": dict(request.session),
+            "prompts": prompts,
+            "token_info": {
+                "access_token": access_token[:10] + "..." if access_token else None,
+                "refresh_token": user.refresh_token[:10] + "..." if user.refresh_token else None,
+                "expires_in": int(expires_in),
+                "expires_at": user.token_expires_at.isoformat() if user.token_expires_at else None
+            }
         }
     )
+
+@app.get("/prompts")
+async def get_prompts(request: Request, db: Session = Depends(get_db)):
+    access_token = request.session.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = get_user_by_access_token(db, access_token)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    prompts = get_user_prompts(db, user.id)
+    return {"prompts": [{"id": p.id, "title": p.title, "content": p.content} for p in prompts]}
+
+@app.post("/prompts")
+async def create_prompt(
+    request: Request,
+    title: str = Form(...),
+    content: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    await create_prompt(db, current_user.id, title, content)
+    return RedirectResponse(url="/", status_code=303)
+
+@app.delete("/prompts/{prompt_id}")
+async def delete_prompt(
+    prompt_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if not await delete_prompt(db, prompt_id, current_user.id):
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    return RedirectResponse(url="/", status_code=303)
+
+@app.put("/prompts/{prompt_id}")
+async def update_prompt(
+    prompt_id: int,
+    request: Request,
+    title: str,
+    content: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    prompt = await update_prompt(db, prompt_id, current_user.id, title, content)
+    if not prompt:
+        raise HTTPException(status_code=404, detail="Prompt not found")
+    return RedirectResponse(url="/", status_code=303)
 
 @app.get("/login")
 async def login(request: Request):
@@ -95,7 +179,7 @@ async def login(request: Request):
     return RedirectResponse(url=auth_url, status_code=303)
 
 @app.get("/callback")
-async def callback(request: Request, code: str | None = None, state: str | None = None):
+async def callback(request: Request, code: str | None = None, state: str | None = None, db: Session = Depends(get_db)):
     if not code or not state:
         return templates.TemplateResponse(
             "error.html",
@@ -134,13 +218,44 @@ async def callback(request: Request, code: str | None = None, state: str | None 
     if response.status_code == 200:
         token_info = response.json()
         access_token = token_info.get("access_token")
-        request.session["access_token"] = access_token
+        refresh_token = token_info.get("refresh_token")
+        expires_in = token_info.get("expires_in", 3600)
+        expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
         
-        # Clear the state after successful verification
-        request.session.pop("state", None)
-        
-        # Redirect to home page
-        return RedirectResponse(url="/", status_code=303)
+        # Get user info from Ara using a new client
+        async with httpx.AsyncClient() as user_client:
+            user_response = await user_client.get(
+                f"{ARA_SERVER_URL}/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"}
+            )
+            
+            if user_response.status_code != 200:
+                return templates.TemplateResponse(
+                    "error.html",
+                    {
+                        "request": request,
+                        "error_message": "Failed to fetch user information",
+                        "show_login": False
+                    }
+                )
+            
+            user_data = user_response.json()
+            ara_user_id = user_data["user_id"]
+            username = user_data["username"]
+            
+            # Store or update user in database
+            user = create_or_update_user(
+                db, ara_user_id, username, access_token, refresh_token, expires_at
+            )
+            
+            # Store access token in session
+            request.session["access_token"] = access_token
+            
+            # Clear the state after successful verification
+            request.session.pop("state", None)
+            
+            # Redirect to home page
+            return RedirectResponse(url="/", status_code=303)
     else:
         return templates.TemplateResponse(
             "error.html",
@@ -148,6 +263,69 @@ async def callback(request: Request, code: str | None = None, state: str | None 
                 "request": request,
                 "error_message": "Failed to obtain access token",
                 "show_login": False
+            }
+        )
+
+@app.post("/refresh-token")
+async def refresh_token(request: Request, db: Session = Depends(get_db)):
+    access_token = request.session.get("access_token")
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user = get_user_by_access_token(db, access_token)
+    if not user or not user.refresh_token:
+        raise HTTPException(status_code=400, detail="No refresh token available")
+    
+    # Exchange refresh token for new tokens
+    token_url = f"{ARA_SERVER_URL}/token"
+    token_data = {
+        "grant_type": "refresh_token",
+        "refresh_token": user.refresh_token,
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "redirect_uri": REDIRECT_URI
+    }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(token_url, data=token_data)
+            logger.info(f"Refresh token response: {response.status_code} - {response.text}")
+            
+            if response.status_code == 200:
+                token_info = response.json()
+                new_access_token = token_info.get("access_token")
+                new_refresh_token = token_info.get("refresh_token")
+                expires_in = token_info.get("expires_in", 3600)
+                expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+                
+                # Update user tokens
+                user = create_or_update_user(
+                    db, user.ara_user_id, user.username, 
+                    new_access_token, new_refresh_token, expires_at
+                )
+                
+                # Update session
+                request.session["access_token"] = new_access_token
+                
+                return RedirectResponse(url="/", status_code=303)
+            else:
+                logger.error(f"Failed to refresh token: {response.status_code} - {response.text}")
+                return templates.TemplateResponse(
+                    "error.html",
+                    {
+                        "request": request,
+                        "error_message": f"Failed to refresh token: {response.text}",
+                        "show_login": True
+                    }
+                )
+    except Exception as e:
+        logger.error(f"Error refreshing token: {str(e)}")
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error_message": f"Error refreshing token: {str(e)}",
+                "show_login": True
             }
         )
 

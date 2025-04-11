@@ -1,129 +1,150 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Ara Login{% endblock %}</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            text-align: center;
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
         }
-
-        .profile-card {
-            background: #f5f5f5;
-            padding: 30px;
-            border-radius: 10px;
-            margin: 20px 0;
-            text-align: left;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .profile-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 20px;
-        }
-
-        .profile-avatar {
-            width: 60px;
-            height: 60px;
-            background-color: #4CAF50;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-size: 24px;
-            margin-right: 20px;
-        }
-
-        .profile-info {
-            flex: 1;
-        }
-
-        .profile-info h2 {
-            margin: 0;
-            color: #333;
-        }
-
-        .profile-info p {
-            margin: 5px 0;
-            color: #666;
-        }
-
-        .debug-section {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 5px;
-            margin: 20px 0;
-            text-align: left;
-            font-size: 14px;
-            color: #666;
-        }
-
-        .debug-section h3 {
-            margin-top: 0;
-            color: #333;
-        }
-
-        .debug-section ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .debug-section li {
-            margin: 5px 0;
-        }
-
-        .button {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #4CAF50;
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            margin: 10px;
-        }
-
-        .button:hover {
-            background-color: #45a049;
-        }
-
-        .button.secondary {
-            background-color: #f44336;
-        }
-
-        .button.secondary:hover {
-            background-color: #d32f2f;
-        }
-
-        .button.debug-toggle {
-            background-color: #2196F3;
-        }
-
-        .button.debug-toggle:hover {
-            background-color: #1976D2;
-        }
-
-        .error {
-            color: #f44336;
-            margin: 20px 0;
-        }
-
-        .success {
-            color: #4CAF50;
-            margin: 20px 0;
-        }
-    </style>
+    </script>
     {% block extra_styles %}{% endblock %}
 </head>
 
-<body>
-    {% block content %}{% endblock %}
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navbar -->
+    <nav class="bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex">
+                    <div class="flex-shrink-0 flex items-center">
+                        <span class="text-xl font-bold text-primary-600">Ara</span>
+                    </div>
+                </div>
+                <div class="flex items-center">
+                    {% if logged_in %}
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm text-gray-600">Welcome, {{ user_info.username }}</span>
+                        <a href="/clear-session"
+                            class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
+                            Logout
+                        </a>
+                    </div>
+                    {% else %}
+                    <a href="/login"
+                        class="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                        Sign in with Ara
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div class="flex gap-6">
+            {% if logged_in %}
+            <!-- Left Sidebar -->
+            <div class="w-80 flex-shrink-0">
+                <div class="bg-white rounded-lg shadow-sm p-6">
+                    <div class="flex items-center mb-6">
+                        <div
+                            class="w-12 h-12 rounded-full bg-primary-600 flex items-center justify-center text-white text-xl font-semibold">
+                            {{ user_info.username[0].upper() }}
+                        </div>
+                        <div class="ml-4">
+                            <h2 class="text-lg font-semibold text-gray-900">{{ user_info.username }}</h2>
+                            <p class="text-sm text-gray-500">User ID: {{ user_info.user_id }}</p>
+                        </div>
+                    </div>
+
+                    <div class="space-y-6">
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-900 mb-2">Token Information</h3>
+                            <div class="space-y-2 text-sm">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Access Token:</span>
+                                    <span class="text-gray-900 font-mono text-xs">{{ token_info.access_token }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Refresh Token:</span>
+                                    <span class="text-gray-900 font-mono text-xs">{{ token_info.refresh_token }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Expires In:</span>
+                                    <span class="text-gray-900">{{ token_info.expires_in }} seconds</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Expires At:</span>
+                                    <span class="text-gray-900">{{ token_info.expires_at }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h3 class="text-sm font-medium text-gray-900 mb-2">Session Data</h3>
+                            <div class="space-y-1 text-sm">
+                                {% for key, value in session_data.items() %}
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">{{ key }}:</span>
+                                    <span class="text-gray-900">{{ value }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="pt-4">
+                            <form action="/refresh-token" method="post" class="mb-4">
+                                <button type="submit"
+                                    class="w-full inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-700 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                                    Refresh Token
+                                </button>
+                            </form>
+
+                            <form action="/set-session" method="get" class="space-y-2">
+                                <input type="text" name="key" placeholder="Key" required
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-xs px-3 py-2">
+                                <input type="text" name="value" placeholder="Value" required
+                                    class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-xs px-3 py-2">
+                                <button type="submit"
+                                    class="w-full inline-flex items-center justify-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-primary-700 bg-primary-100 hover:bg-primary-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
+                                    Set Session Value
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Main Content Area -->
+            <div class="flex-1">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
     {% block scripts %}{% endblock %}
 </body>
 
