@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Welcome to Ara Login</h1>
+{% if not logged_in %}
+<p>Please sign in to continue</p>
+<a href="/login" class="button">Sign in with Ara</a>
+{% else %}
+<div class="profile-card">
+    <div class="profile-header">
+        <div class="profile-avatar">
+            {{ user_info.username[0].upper() }}
+        </div>
+        <div class="profile-info">
+            <h2>{{ user_info.username }}</h2>
+            <p>User ID: {{ user_info.user_id }}</p>
+        </div>
+    </div>
+</div>
+<div>
+    <a href="/clear-session" class="button secondary">Logout</a>
+    <a href="#" onclick="toggleDebug()" class="button debug-toggle">Toggle Debug Info</a>
+</div>
+<div class="debug-section" id="debugSection" style="display: none;">
+    <h3>Session Debug Information</h3>
+    <ul>
+        {% for key, value in session_data.items() %}
+        <li><strong>{{ key }}:</strong> {{ value }}</li>
+        {% endfor %}
+    </ul>
+    <form action="/set-session" method="get" style="margin-top: 20px;">
+        <input type="text" name="key" placeholder="Key" required style="padding: 5px; margin-right: 5px;">
+        <input type="text" name="value" placeholder="Value" required style="padding: 5px; margin-right: 5px;">
+        <button type="submit" class="button" style="padding: 5px 10px;">Set Session Value</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if logged_in %}
+<script>
+    function toggleDebug() {
+        const debugSection = document.getElementById('debugSection');
+        debugSection.style.display = debugSection.style.display === 'none' ? 'block' : 'none';
+    }
+</script>
+{% endif %}
+{% endblock %}

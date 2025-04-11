@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 import secrets
 import os
@@ -8,6 +10,9 @@ from urllib.parse import urlencode
 import uvicorn
 
 app = FastAPI()
+
+# Configure templates
+templates = Jinja2Templates(directory="sample-consumer/templates")
 
 # Session configuration
 app.add_middleware(
@@ -30,50 +35,51 @@ CLIENT_SECRET = os.environ['CLIENT_SECRET']
 REDIRECT_URI = "http://localhost:5000/callback"
 SCOPE = "profile email"
 
-@app.get("/", response_class=HTMLResponse)
-async def home():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Welcome to Ara Login</title>
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-                text-align: center;
+@app.get("/")
+async def home(request: Request):
+    access_token = request.session.get("access_token")
+    
+    if not access_token:
+        return templates.TemplateResponse(
+            "home.html",
+            {"request": request, "logged_in": False}
+        )
+    
+    # Fetch user info if logged in
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            f"{ARA_SERVER_URL}/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+    
+    if response.status_code != 200:
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error_message": "Failed to fetch user information",
+                "show_login": True
             }
-            .login-button {
-                display: inline-block;
-                padding: 10px 20px;
-                background-color: #4CAF50;
-                color: white;
-                text-decoration: none;
-                border-radius: 5px;
-                margin-top: 20px;
-            }
-            .login-button:hover {
-                background-color: #45a049;
-            }
-        </style>
-    </head>
-    <body>
-        <h1>Welcome to Ara Login</h1>
-        <p>Please sign in to continue</p>
-        <a href="/login" class="login-button">Sign in with Ara</a>
-    </body>
-    </html>
-    """
+        )
+    
+    user_info = response.json()
+    session_data = dict(request.session)
+    
+    return templates.TemplateResponse(
+        "home.html",
+        {
+            "request": request,
+            "logged_in": True,
+            "user_info": user_info,
+            "session_data": session_data
+        }
+    )
 
 @app.get("/login")
 async def login(request: Request):
     # Generate a state parameter for CSRF protection
     state = secrets.token_urlsafe(16)
     request.session["state"] = state
-    print(f"Stored state in session: {state}")
-    print(f"Current session data: {dict(request.session)}")
     
     # Build query parameters
     params = {
@@ -86,100 +92,31 @@ async def login(request: Request):
     
     # Build the authorization URL
     auth_url = f"{ARA_SERVER_URL}/authorize?{urlencode(params)}"
-    response = RedirectResponse(url=auth_url, status_code=303)
-    return response
+    return RedirectResponse(url=auth_url, status_code=303)
 
-@app.get("/callback", response_class=HTMLResponse)
+@app.get("/callback")
 async def callback(request: Request, code: str | None = None, state: str | None = None):
     if not code or not state:
-        return HTMLResponse("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Error</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    text-align: center;
-                }
-                .error {
-                    color: #f44336;
-                    margin: 20px 0;
-                }
-                .button {
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    margin-top: 20px;
-                }
-            </style>
-        </head>
-        <body>
-            <h1>Error</h1>
-            <p class="error">Missing code or state parameter</p>
-            <a href="/" class="button">Return to Home</a>
-        </body>
-        </html>
-        """)
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error_message": "Missing code or state parameter",
+                "show_login": False
+            }
+        )
     
     # Verify state to prevent CSRF
     stored_state = request.session.get("state")
-    print(f"Received state: {state}, Stored state: {stored_state}")  # Debug log
-    
     if state != stored_state:
-        return HTMLResponse(f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Error</title>
-            <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    text-align: center;
-                }}
-                .error {{
-                    color: #f44336;
-                    margin: 20px 0;
-                }}
-                .debug {{
-                    background: #f5f5f5;
-                    padding: 20px;
-                    border-radius: 5px;
-                    margin: 20px 0;
-                    text-align: left;
-                }}
-                .button {{
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    margin-top: 20px;
-                }}
-            </style>
-        </head>
-        <body>
-            <h1>Error</h1>
-            <p class="error">Invalid state parameter</p>
-            <div class="debug">
-                <h3>Debug Information:</h3>
-                <p>Received state: {state}</p>
-                <p>Stored state: {stored_state}</p>
-            </div>
-            <a href="/" class="button">Return to Home</a>
-        </body>
-        </html>
-        """)
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error_message": "Invalid state parameter",
+                "show_login": False
+            }
+        )
     
     # Exchange code for access token
     token_url = f"{ARA_SERVER_URL}/token"
@@ -202,250 +139,27 @@ async def callback(request: Request, code: str | None = None, state: str | None 
         # Clear the state after successful verification
         request.session.pop("state", None)
         
-        return HTMLResponse("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Login Successful</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    text-align: center;
-                }
-                .success {
-                    color: #4CAF50;
-                    margin: 20px 0;
-                }
-                .debug {
-                    background: #f5f5f5;
-                    padding: 20px;
-                    border-radius: 5px;
-                    margin: 20px 0;
-                    text-align: left;
-                }
-                .button {
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    margin-top: 20px;
-                }
-            </style>
-        </head>
-        <body>
-            <h1>Login Successful!</h1>
-            <p class="success">You have been successfully authenticated.</p>
-            <div class="debug">
-                <h3>Session Information:</h3>
-                <p>Access token stored in session</p>
-                <p>State parameter cleared</p>
-            </div>
-            <a href="/test-session" class="button">View Session Data</a>
-            <a href="/" class="button">Return to Home</a>
-        </body>
-        </html>
-        """)
+        # Redirect to home page
+        return RedirectResponse(url="/", status_code=303)
     else:
-        return HTMLResponse(f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Error</title>
-            <style>
-                body {{
-                    font-family: Arial, sans-serif;
-                    max-width: 800px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    text-align: center;
-                }}
-                .error {{
-                    color: #f44336;
-                    margin: 20px 0;
-                }}
-                .debug {{
-                    background: #f5f5f5;
-                    padding: 20px;
-                    border-radius: 5px;
-                    margin: 20px 0;
-                    text-align: left;
-                }}
-                .button {{
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background-color: #4CAF50;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    margin-top: 20px;
-                }}
-            </style>
-        </head>
-        <body>
-            <h1>Error</h1>
-            <p class="error">Failed to obtain access token</p>
-            <div class="debug">
-                <h3>Error Details:</h3>
-                <p>Status Code: {response.status_code}</p>
-                <p>Response: {response.text}</p>
-            </div>
-            <a href="/" class="button">Return to Home</a>
-        </body>
-        </html>
-        """)
+        return templates.TemplateResponse(
+            "error.html",
+            {
+                "request": request,
+                "error_message": "Failed to obtain access token",
+                "show_login": False
+            }
+        )
 
-@app.get("/test-session", response_class=HTMLResponse)
-async def test_session(request: Request):
-    # Get current session data
-    session_data = dict(request.session)
-    
-    # Create HTML to display session data
-    session_html = "<ul>"
-    for key, value in session_data.items():
-        session_html += f"<li><strong>{key}:</strong> {value}</li>"
-    session_html += "</ul>"
-    
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Session Test</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-            }}
-            .session-data {{
-                background: #f5f5f5;
-                padding: 20px;
-                border-radius: 5px;
-                margin: 20px 0;
-            }}
-            .button {{
-                display: inline-block;
-                padding: 10px 20px;
-                margin: 10px;
-                background-color: #4CAF50;
-                color: white;
-                text-decoration: none;
-                border-radius: 5px;
-                border: none;
-                cursor: pointer;
-            }}
-            .button:hover {{
-                background-color: #45a049;
-            }}
-            .danger {{
-                background-color: #f44336;
-            }}
-            .danger:hover {{
-                background-color: #d32f2f;
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>Session Test Page</h1>
-        
-        <div class="session-data">
-            <h2>Current Session Data:</h2>
-            {session_html}
-        </div>
-        
-        <form action="/set-session" method="get">
-            <input type="text" name="key" placeholder="Key" required>
-            <input type="text" name="value" placeholder="Value" required>
-            <button type="submit" class="button">Set Session Value</button>
-        </form>
-        
-        <form action="/clear-session" method="get">
-            <button type="submit" class="button danger">Clear Session</button>
-        </form>
-        
-        <a href="/test-session" class="button">Refresh Page</a>
-    </body>
-    </html>
-    """
-
-@app.get("/set-session", response_class=HTMLResponse)
+@app.get("/set-session")
 async def set_session(request: Request, key: str, value: str):
     request.session[key] = value
-    print(f"Setting session key '{key}' to '{value}'")
-    print(f"Current session data: {dict(request.session)}")
-    response = RedirectResponse(url="/test-session", status_code=303)
-    return response
+    return RedirectResponse(url="/", status_code=303)
 
-@app.get("/clear-session", response_class=HTMLResponse)
+@app.get("/clear-session")
 async def clear_session(request: Request):
-    print("Clearing session data")
-    print(f"Session data before clear: {dict(request.session)}")
     request.session.clear()
-    response = RedirectResponse(url="/test-session", status_code=303)
-    return response
-
-@app.get("/other-page", response_class=HTMLResponse)
-async def other_page(request: Request):
-    # Get current session data
-    session_data = dict(request.session)
-    
-    # Create HTML to display session data
-    session_html = "<ul>"
-    for key, value in session_data.items():
-        session_html += f"<li><strong>{key}:</strong> {value}</li>"
-    session_html += "</ul>"
-    
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Other Page</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                max-width: 800px;
-                margin: 0 auto;
-                padding: 20px;
-            }}
-            .session-data {{
-                background: #f5f5f5;
-                padding: 20px;
-                border-radius: 5px;
-                margin: 20px 0;
-            }}
-            .button {{
-                display: inline-block;
-                padding: 10px 20px;
-                margin: 10px;
-                background-color: #4CAF50;
-                color: white;
-                text-decoration: none;
-                border-radius: 5px;
-            }}
-            .button:hover {{
-                background-color: #45a049;
-            }}
-        </style>
-    </head>
-    <body>
-        <h1>Other Page</h1>
-        <p>This is a different page, but it should show the same session data!</p>
-        
-        <div class="session-data">
-            <h2>Current Session Data:</h2>
-            {session_html}
-        </div>
-        
-        <a href="/test-session" class="button">Go to Test Page</a>
-        <a href="/" class="button">Go to Home</a>
-    </body>
-    </html>
-    """
+    return RedirectResponse(url="/", status_code=303)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    uvicorn.run("login_web:app", host="0.0.0.0", port=5000, reload=True)
