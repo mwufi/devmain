@@ -92,7 +92,8 @@ def recreate_tables():
 # Update ensure_tables to use recreate_tables
 def ensure_tables():
     try:
-        recreate_tables()
+        # Create all tables if they don't exist
+        Base.metadata.create_all(engine)
         logger.info("All database tables created successfully")
     except Exception as e:
         logger.error(f"Error creating database tables: {e}")
@@ -163,9 +164,15 @@ def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: st
     if not client or client.redirect_uri != redirect_uri:
         raise HTTPException(status_code=400, detail="Invalid client or redirect_uri")
     
-    # Check if user is logged in
-    session_id = request.session.get("session_id")
-    if not session_id:
+    # Get all active sessions
+    db_session = Session()
+    active_sessions = db_session.query(UserSession, UserDB).join(
+        UserDB, UserSession.user_id == UserDB.id
+    ).filter(UserSession.is_active == 1).all()
+    db_session.close()
+    
+    # If no active sessions, show login page
+    if not active_sessions:
         return templates.TemplateResponse("login.html", {
             "request": request,
             "client_id": client_id,
@@ -174,20 +181,37 @@ def authorize_get(request: Request, client_id: str, redirect_uri: str, scope: st
             "state": state
         })
     
-    # Get all active sessions for the current user
-    db_session = Session()
-    active_sessions = db_session.query(UserSession, UserDB).join(
-        UserDB, UserSession.user_id == UserDB.id
-    ).filter(UserSession.is_active == 1).all()
-    db_session.close()
-    
-    return templates.TemplateResponse("consent.html", {
+    # Show account picker
+    return templates.TemplateResponse("account_picker.html", {
         "request": request,
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "scope": scope,
         "state": state,
         "active_sessions": active_sessions
+    })
+
+@router.get("/select_account")
+def select_account(request: Request, user_id: int, client_id: str, redirect_uri: str, scope: str, state: str):
+    # Verify the user exists
+    session = Session()
+    user = session.query(UserDB).filter_by(id=user_id).first()
+    session.close()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Store the selected user's ID in the session
+    request.session["user_id"] = user.id
+    
+    # Show consent page for the selected user
+    return templates.TemplateResponse("consent.html", {
+        "request": request,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+        "state": state,
+        "user": user
     })
 
 @router.post("/authorize")
@@ -211,10 +235,16 @@ def consent_post(request: Request, consent: str = Form(...), client_id: str = Fo
     if not user_id:
         raise HTTPException(status_code=403, detail="Not logged in")
     
+    # Verify the user exists
+    session = Session()
+    user = session.query(UserDB).filter_by(id=user_id).first()
+    if not user:
+        session.close()
+        raise HTTPException(status_code=404, detail="User not found")
+    
     if consent == "yes":
         code = str(uuid.uuid4())
         expires_at = datetime.utcnow() + timedelta(minutes=10)
-        session = Session()
         auth_code = AuthCodeDB(code=code, client_id=client_id, user_id=user_id, expires_at=expires_at)
         session.add(auth_code)
         session.commit()
@@ -222,6 +252,7 @@ def consent_post(request: Request, consent: str = Form(...), client_id: str = Fo
         redirect_url = f"{redirect_uri}?code={code}&state={state}"
         return Response(status_code=302, headers={"Location": redirect_url})
     else:
+        session.close()
         redirect_url = f"{redirect_uri}?error=access_denied&state={state}"
         return Response(status_code=302, headers={"Location": redirect_url})
 
@@ -359,14 +390,20 @@ def dashboard(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/login")
-def login_get(request: Request):
+def login_get(request: Request, client_id: str = None, redirect_uri: str = None, scope: str = None, state: str = None):
     return templates.TemplateResponse("login.html", {
         "request": request,
-        "error": None
+        "error": None,
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+        "state": state
     })
 
 @router.post("/login")
-def login_post(request: Request, username: str = Form(...), password: str = Form(...)):
+def login_post(request: Request, username: str = Form(...), password: str = Form(...),
+              client_id: str = Form(None), redirect_uri: str = Form(None), 
+              scope: str = Form(None), state: str = Form(None)):
     try:
         logger.info(f"Login attempt for username: {username}")
         session = Session()
@@ -378,7 +415,11 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
             session.close()
             return templates.TemplateResponse("login.html", {
                 "request": request,
-                "error": "Invalid credentials"
+                "error": "Invalid credentials",
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "scope": scope,
+                "state": state
             })
         
         # Verify password
@@ -387,7 +428,11 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
             session.close()
             return templates.TemplateResponse("login.html", {
                 "request": request,
-                "error": "Invalid credentials"
+                "error": "Invalid credentials",
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "scope": scope,
+                "state": state
             })
         
         logger.info(f"User authenticated: {username}")
@@ -399,7 +444,7 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
         user_session = UserSession(
             user_id=user.id,
             session_id=session_id,
-            client_id=None  # No specific client for dashboard login
+            client_id=client_id  # Store the client_id if this is an OAuth2 flow
         )
         session.add(user_session)
         session.commit()
@@ -410,12 +455,29 @@ def login_post(request: Request, username: str = Form(...), password: str = Form
         logger.info(f"Session stored for user: {username}")
         
         session.close()
+
+        # If this is part of an OAuth2 flow, show the consent page
+        if client_id and redirect_uri:
+            return templates.TemplateResponse("consent.html", {
+                "request": request,
+                "client_id": client_id,
+                "redirect_uri": redirect_uri,
+                "scope": scope,
+                "state": state,
+                "user": user
+            })
+        
+        # Otherwise, go to dashboard
         return RedirectResponse(url="/oauth2/dashboard", status_code=303)
     except Exception as e:
         logger.error(f"Error in login: {str(e)}", exc_info=True)
         return templates.TemplateResponse("login.html", {
             "request": request,
-            "error": f"An error occurred during login: {str(e)}"
+            "error": f"An error occurred during login: {str(e)}",
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "scope": scope,
+            "state": state
         })
 
 @router.post("/logout")

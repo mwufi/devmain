@@ -34,8 +34,8 @@ app.add_middleware(
 )
 
 # OAuth2 configuration
-os.environ['CLIENT_ID'] = '9fe28be1-82e5-42ff-90f3-1c7bbb101531'
-os.environ['CLIENT_SECRET'] = '18b60d32-95a4-457a-819f-30da5cca7a6e'
+os.environ['CLIENT_ID'] = 'aced369e-2968-4034-8308-94a8dcc8f7fa'
+os.environ['CLIENT_SECRET'] = '8acb83c4-b3bc-4636-be12-189e9864df2f'
 
 ARA_SERVER_URL = "http://localhost:8000/oauth2"
 CLIENT_ID = os.environ['CLIENT_ID']
