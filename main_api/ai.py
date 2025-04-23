@@ -73,10 +73,7 @@ def get_chat_ai_response(messages: List[Dict[str, Any]], bot_info: Dict[str, Any
             model=model,
             messages=formatted_messages
         )
-        if response.error:
-            logger.error(f"No response from OpenAI: {response}")
-            return f"Sorry, I'm having trouble responding right now. Error: {str(response.error)}"
         return response.choices[0].message.content
     except Exception as e:
-        print(f"Error getting AI response: {e}")
+        logger.error(f"Error getting AI response: {e}")
         return f"Sorry, I'm having trouble responding right now. Error: {str(e)}"
